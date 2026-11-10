@@ -22,11 +22,17 @@ from docx.shared import Pt, Cm, Twips
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT, WD_LINE_SPACING
 
 import pdfplumber
+import streamlit as st
 
 # ---------------------------------------------------------------------------
 # PDF extraction
 # ---------------------------------------------------------------------------
+# Streamlit reruns the whole script on every widget interaction (not just on
+# submit), so without caching, editing any single field would re-extract the
+# PDF from scratch each time. st.cache_data keys on the file bytes, so a
+# rerun with the same upload reuses the prior result instantly.
 
+@st.cache_data(show_spinner=False)
 def extract_pdf_text(file_bytes: bytes) -> str:
     """Return all page text concatenated with blank-line separators."""
     pages = []
@@ -36,6 +42,7 @@ def extract_pdf_text(file_bytes: bytes) -> str:
     return "\n".join(pages)
 
 
+@st.cache_data(show_spinner=False)
 def extract_pdf_tables(file_bytes: bytes):
     """Return every table found across all pages as a flat list of row-lists."""
     rows = []
