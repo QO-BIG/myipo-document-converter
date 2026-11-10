@@ -1,0 +1,5 @@
+streamlit
+pdfplumber
+python-docx
+docx2pdf; platform_system == "Windows"
+pywin32; platform_system == "Windows"

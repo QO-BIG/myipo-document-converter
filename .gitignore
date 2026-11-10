@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# Real client reference documents - not needed to run the app, contains client data
+sample_documents/
+
+# Unrelated file, not part of this project
+Xero_Migration_Checklist_1.xlsx
