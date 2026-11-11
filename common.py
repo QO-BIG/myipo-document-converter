@@ -271,25 +271,40 @@ def build_pdf_bytes(doc) -> bytes:
 def render_download_buttons(st, doc, base_name: str):
     """
     Build the PDF and trigger the browser download immediately -- no second
-    "Download" button to click. Streamlit's own st.download_button always
-    needs its own separate click, so the auto-download is done with a tiny
-    injected script instead: a hidden link with the PDF as a base64 data URI,
-    clicked programmatically as soon as it renders.
+    "Download" button to click.
+
+    This renders Streamlit's own st.download_button (whose click-to-download
+    mechanism is known to work reliably, since Streamlit handles the Blob URL
+    itself), hides it with CSS, and clicks it automatically via a tiny
+    injected script. A hand-rolled download link built entirely inside the
+    injected script's sandboxed iframe does NOT work reliably -- browsers
+    block file downloads originating from inside a sandboxed iframe, which
+    is exactly the container st.components.v1.html renders into.
     """
     try:
         with st.spinner("Generating PDF..."):
             pdf_bytes = build_pdf_bytes(doc)
-        b64 = base64.b64encode(pdf_bytes).decode()
         filename = f"{base_name}.pdf"
+
+        st.markdown(
+            "<style>[data-testid='stDownloadButton'] {position: absolute; left: -9999px;}</style>",
+            unsafe_allow_html=True,
+        )
+        st.download_button(
+            "Download PDF",
+            data=pdf_bytes,
+            file_name=filename,
+            mime="application/pdf",
+            key=f"auto_dl_{base_name}",
+        )
         components.html(
-            f"""
+            """
             <script>
-            const link = document.createElement('a');
-            link.href = "data:application/pdf;base64,{b64}";
-            link.download = "{filename}";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            setTimeout(function() {
+                const doc = window.parent.document;
+                const btn = doc.querySelector("[data-testid='stDownloadButton'] button");
+                if (btn) { btn.click(); }
+            }, 200);
             </script>
             """,
             height=0,
