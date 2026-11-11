@@ -270,11 +270,11 @@ def build_pdf_bytes(doc) -> bytes:
 
 def render_download_buttons(st, doc, base_name: str):
     """
-    Build the PDF, open it in a new tab for viewing, and also trigger the
-    browser download -- no second "Download" button to click. Streamlit's
-    own st.download_button always needs its own separate click, so both the
-    popup preview and the auto-download are done with a tiny injected script
-    instead, running as soon as it renders.
+    Build the PDF and trigger the browser download immediately -- no second
+    "Download" button to click. Streamlit's own st.download_button always
+    needs its own separate click, so the auto-download is done with a tiny
+    injected script instead: a hidden link with the PDF as a base64 data URI,
+    clicked programmatically as soon as it renders.
     """
     try:
         with st.spinner("Generating PDF..."):
@@ -284,10 +284,8 @@ def render_download_buttons(st, doc, base_name: str):
         components.html(
             f"""
             <script>
-            const dataUrl = "data:application/pdf;base64,{b64}";
-            window.open(dataUrl, "_blank");
             const link = document.createElement('a');
-            link.href = dataUrl;
+            link.href = "data:application/pdf;base64,{b64}";
             link.download = "{filename}";
             document.body.appendChild(link);
             link.click();
