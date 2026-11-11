@@ -59,16 +59,14 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review the extracted details below")
-
-    app_no = st.text_input("Application / Registration No.", parsed["app_no"], disabled=True, key="cop_app_no")
-    received_date = st.text_input("Date application was received", parsed["received_date"], disabled=True, key="cop_received_date")
-    name = st.text_input("Name of applicant / proprietor", parsed["name"], disabled=True, key="cop_name")
-    address = st.text_area("Address", parsed["address"], height=100, disabled=True, key="cop_address")
-    letter_date = st.text_input("Letter date", parsed["letter_date"], disabled=True, key="cop_letter_date")
-    our_ref = st.text_input("Our Ref", parsed["our_ref"], disabled=True, key="cop_our_ref")
-    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", disabled=True, key="cop_your_ref")
-    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="cop_to")
+    app_no = parsed["app_no"]
+    received_date = parsed["received_date"]
+    name = parsed["name"]
+    address = parsed["address"]
+    letter_date = parsed["letter_date"]
+    our_ref = parsed["our_ref"]
+    your_ref = parsed["your_ref"] or "-"
+    to = parsed["to"]
 
     if st.button("Generate PDF", type="primary", key="cop_generate"):
         doc = c.new_document()

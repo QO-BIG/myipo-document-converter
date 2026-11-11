@@ -109,22 +109,14 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review the extracted details below")
+    app_no = parsed["app_no"]
+    class_ = parsed["class_"]
+    applicant = parsed["applicant"]
+    your_ref = parsed["your_ref"]
+    date = parsed["date"]
+    app_date = parsed["app_date"]
+    ground_edits = list(parsed["grounds_raw"])
 
-    app_no = st.text_input("Application No.", parsed["app_no"], disabled=True, key="pr_app_no")
-    class_ = st.text_input("Class", parsed["class_"], disabled=True, key="pr_class")
-    applicant = st.text_area("Applicant (name + address)", parsed["applicant"], height=100, disabled=True, key="pr_applicant")
-    your_ref = st.text_input("Your Ref", parsed["your_ref"], disabled=True, key="pr_your_ref")
-    date = st.text_input("Letter date", parsed["date"], disabled=True, key="pr_date")
-    app_date = st.text_input("Trade mark application date", parsed["app_date"], disabled=True, key="pr_app_date")
-
-    st.markdown("**Grounds for refusal** (as extracted)")
-    ground_edits = []
-    for i, g in enumerate(parsed["grounds_raw"], start=1):
-        edited = st.text_area(f"Ground 2.{i}", g, height=100, disabled=True, key=f"pr_ground_{i}")
-        ground_edits.append(edited)
-
-    st.markdown("**Conflicting / cited trade marks table** (leave blank rows if none)")
     default_rows = []
     header_seen = False
     for row in table_rows:
@@ -136,15 +128,9 @@ def render():
             status = (row[-1] or "").replace("\n", " ").strip()
             default_rows.append((app_num, status))
 
-    table_text = st.text_area(
-        "One row per line, format: Application No. | Status",
-        "\n".join(f"{a} | {s}" for a, s in default_rows),
-        height=100,
-        disabled=True,
-        key="pr_table",
-    )
+    table_text = "\n".join(f"{a} | {s}" for a, s in default_rows)
 
-    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="pr_to")
+    to = parsed["to"]
 
     if st.button("Generate PDF", type="primary", key="pr_generate"):
         doc = c.new_document()

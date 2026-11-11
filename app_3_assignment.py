@@ -65,18 +65,16 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review the extracted details below")
-
-    reg_no = st.text_input("Registration No.", parsed["reg_no"], disabled=True, key="asn_reg_no")
-    class_ = st.text_input("Class", parsed["class_"], disabled=True, key="asn_class")
-    received_date = st.text_input("Date application was received", parsed["received_date"], disabled=True, key="asn_received_date")
-    name = st.text_input("Name of new proprietor", parsed["name"], disabled=True, key="asn_name")
-    address = st.text_area("Address", parsed["address"], height=100, disabled=True, key="asn_address")
-    assignment_date = st.text_input("Date of Assignment (dd/mm/yyyy)", parsed["assignment_date"], disabled=True, key="asn_assignment_date")
-    letter_date = st.text_input("Letter date", parsed["letter_date"], disabled=True, key="asn_letter_date")
-    our_ref = st.text_input("Our Ref", parsed["our_ref"], disabled=True, key="asn_our_ref")
-    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", disabled=True, key="asn_your_ref")
-    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="asn_to")
+    reg_no = parsed["reg_no"]
+    class_ = parsed["class_"]
+    received_date = parsed["received_date"]
+    name = parsed["name"]
+    address = parsed["address"]
+    assignment_date = parsed["assignment_date"]
+    letter_date = parsed["letter_date"]
+    our_ref = parsed["our_ref"]
+    your_ref = parsed["your_ref"] or "-"
+    to = parsed["to"]
 
     if st.button("Generate PDF", type="primary", key="asn_generate"):
         doc = c.new_document()

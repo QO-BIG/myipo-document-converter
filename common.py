@@ -11,6 +11,7 @@ The output PDF is built directly with reportlab (no python-docx / LibreOffice
 / Microsoft Word involved) so the app has no system-package dependency and
 deploys/starts quickly on Streamlit Community Cloud.
 """
+import base64
 import io
 from xml.sax.saxutils import escape as _xml_escape
 
@@ -23,6 +24,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 import pdfplumber
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ---------------------------------------------------------------------------
 # PDF extraction
@@ -267,15 +269,31 @@ def build_pdf_bytes(doc) -> bytes:
 
 
 def render_download_buttons(st, doc, base_name: str):
-    """Shared UI: a single PDF download button for the generated document."""
+    """
+    Build the PDF and trigger the browser download immediately -- no second
+    "Download" button to click. Streamlit's own st.download_button always
+    needs its own separate click, so the auto-download is done with a tiny
+    injected script instead: a hidden link with the PDF as a base64 data URI,
+    clicked programmatically as soon as it renders.
+    """
     try:
         with st.spinner("Generating PDF..."):
             pdf_bytes = build_pdf_bytes(doc)
-        st.download_button(
-            "⬇️ Download PDF",
-            data=pdf_bytes,
-            file_name=f"{base_name}.pdf",
-            mime="application/pdf",
+        b64 = base64.b64encode(pdf_bytes).decode()
+        filename = f"{base_name}.pdf"
+        components.html(
+            f"""
+            <script>
+            const link = document.createElement('a');
+            link.href = "data:application/pdf;base64,{b64}";
+            link.download = "{filename}";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            </script>
+            """,
+            height=0,
         )
+        st.success(f"Downloaded {filename}")
     except Exception as e:
         st.error(f"PDF generation failed: {e}")
