@@ -1,11 +1,11 @@
 """
 Shared helpers used by all three MyIPO PDF -> English Word translator apps.
 
-Keeps PDF extraction and the document styling (matching the house style used
-in the existing sample translations: Times New Roman, [English translation]
-header, two-column "Label : Value" fields, and the standard disclaimer
-footer) in one place so the three Streamlit tools stay visually and
-behaviourally consistent.
+Keeps PDF extraction, Malay->English translation, and the document styling
+(matching the house style used in the existing sample translations: Times
+New Roman, [English translation] header, two-column "Label : Value" fields,
+and the standard disclaimer footer) in one place so the three Streamlit
+tools stay visually and behaviourally consistent.
 
 The output PDF is built directly with reportlab (no python-docx / LibreOffice
 / Microsoft Word involved) so the app has no system-package dependency and
@@ -13,6 +13,10 @@ deploys/starts quickly on Streamlit Community Cloud.
 """
 import base64
 import io
+import json
+import re
+import urllib.parse
+import urllib.request
 from xml.sax.saxutils import escape as _xml_escape
 
 from reportlab.lib import colors
@@ -21,6 +25,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import Image as RLImage
 
 import pdfplumber
 import streamlit as st
@@ -53,6 +58,137 @@ def extract_pdf_tables(file_bytes: bytes):
             for table in page.extract_tables():
                 rows.extend(table)
     return rows
+
+
+@st.cache_data(show_spinner=False)
+def extract_conflicting_marks(file_bytes: bytes):
+    """
+    Parse the 'Application No. / Trade Mark / Status' table used in
+    Provisional Refusal notices for section 24(2)(b) grounds.
+
+    pdfplumber's plain table extraction only sees text, so the "Trade Mark"
+    column (which holds the conflicting mark's logo as an embedded image,
+    not text) comes out blank. This looks up each row's cell bounding box via
+    page.find_tables() and matches it against any embedded image whose
+    center falls inside that cell, then rasterizes just that image region
+    directly from the page -- no extra system packages needed, since
+    pdfplumber already depends on pypdfium2 for this.
+
+    Returns a list of (app_no: str, status: str, logo_png_bytes: bytes|None)
+    tuples, one per data row, skipping the header row.
+    """
+    results = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            for table in page.find_tables():
+                for row in table.rows:
+                    cells = row.cells
+                    if len(cells) < 3 or any(cell is None for cell in cells):
+                        continue
+                    app_no = (page.crop(cells[0]).extract_text() or "").strip()
+                    if not app_no or "permohonan" in app_no.lower():
+                        continue  # blank or header row
+                    status = (page.crop(cells[2]).extract_text() or "").replace("\n", " ").strip()
+
+                    logo_bytes = None
+                    mid_x0, mid_top, mid_x1, mid_bottom = cells[1]
+                    for img in page.images:
+                        center_x = (img["x0"] + img["x1"]) / 2
+                        center_y = (img["top"] + img["bottom"]) / 2
+                        if mid_x0 <= center_x <= mid_x1 and mid_top <= center_y <= mid_bottom:
+                            crop_bbox = (img["x0"], img["top"], img["x1"], img["bottom"])
+                            buf = io.BytesIO()
+                            page.crop(crop_bbox).to_image(resolution=200).original.save(buf, format="PNG")
+                            logo_bytes = buf.getvalue()
+                            break
+
+                    results.append((app_no, status, logo_bytes))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Translation
+# ---------------------------------------------------------------------------
+
+MONTHS_MS_TO_EN = {
+    "januari": "January", "februari": "February", "mac": "March",
+    "april": "April", "mei": "May", "jun": "June", "julai": "July",
+    "ogos": "August", "september": "September", "oktober": "October",
+    "november": "November", "disember": "December",
+}
+
+_DATE_RE = re.compile(r"\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b")
+
+
+def translate_date(date_str: str) -> str:
+    """'06 Oktober 2026' -> '6 October 2026' (strips leading zero, maps month)."""
+    if not date_str:
+        return date_str
+
+    def repl(m):
+        day, month, year = m.groups()
+        month_en = MONTHS_MS_TO_EN.get(month.lower(), month)
+        return f"{int(day)} {month_en} {year}"
+
+    return _DATE_RE.sub(repl, date_str.strip())
+
+
+_translation_cache = {}
+
+
+def gt_translate(text: str, source: str = "ms", target: str = "en") -> str:
+    """
+    Translate text via the public (unofficial) Google Translate endpoint.
+    Chunks long text to stay under the GET query-length limit, caches results
+    for the lifetime of the process, and degrades gracefully (returns the
+    original text prefixed with a warning marker) if the network call fails.
+    """
+    text = text.strip()
+    if not text:
+        return ""
+
+    key = (source, target, text)
+    if key in _translation_cache:
+        return _translation_cache[key]
+
+    chunks = _split_for_translation(text)
+    translated_chunks = []
+    for chunk in chunks:
+        try:
+            translated_chunks.append(_gt_translate_chunk(chunk, source, target))
+        except Exception:
+            translated_chunks.append(f"[TRANSLATION FAILED - please translate manually]\n{chunk}")
+
+    result = " ".join(translated_chunks)
+    _translation_cache[key] = result
+    return result
+
+
+def _split_for_translation(text: str, limit: int = 1500):
+    """Split on sentence boundaries, keeping chunks under `limit` chars."""
+    if len(text) <= limit:
+        return [text]
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    chunks, current = [], ""
+    for sentence in sentences:
+        if len(current) + len(sentence) + 1 > limit and current:
+            chunks.append(current.strip())
+            current = sentence
+        else:
+            current = f"{current} {sentence}".strip()
+    if current:
+        chunks.append(current.strip())
+    return chunks or [text[:limit]]
+
+
+def _gt_translate_chunk(text: str, source: str, target: str) -> str:
+    params = urllib.parse.urlencode({
+        "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text,
+    })
+    url = "https://translate.googleapis.com/translate_a/single?" + params
+    with urllib.request.urlopen(url, timeout=15) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return "".join(seg[0] for seg in data[0] if seg[0])
 
 
 # ---------------------------------------------------------------------------
@@ -234,13 +370,25 @@ def add_disclaimer(doc):
     ), style))
 
 
+def _table_cell(cell, style):
+    """A cell is either text, or raw image bytes (e.g. a logo cropped from the source PDF)."""
+    if isinstance(cell, (bytes, bytearray)):
+        img = RLImage(io.BytesIO(cell))
+        max_w, max_h = 2.5 * cm, 2.2 * cm
+        scale = min(max_w / img.drawWidth, max_h / img.drawHeight, 1.0)
+        img.drawWidth *= scale
+        img.drawHeight *= scale
+        return img
+    return Paragraph(_multiline(cell), style)
+
+
 def add_table(doc, headers, rows):
     header_style = ParagraphStyle(name="th", fontName=FONT_BOLD, fontSize=SIZE_BODY, leading=SIZE_BODY * 1.15)
     body_style = ParagraphStyle(name="td", fontName=FONT_NAME, fontSize=SIZE_BODY, leading=SIZE_BODY * 1.15)
 
     data = [[Paragraph(_xml_escape(h), header_style) for h in headers]]
     for row in rows:
-        data.append([Paragraph(_multiline(cell), body_style) for cell in row])
+        data.append([_table_cell(cell, body_style) for cell in row])
 
     col_w = USABLE_WIDTH / len(headers)
     table = Table(data, colWidths=[col_w] * len(headers), hAlign="LEFT")

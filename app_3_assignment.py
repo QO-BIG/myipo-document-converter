@@ -22,7 +22,7 @@ def parse(text: str) -> dict:
     data["class_"] = m.group(1).strip() if m else ""
 
     m = re.search(r"diterima pada\s+([\d]{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
-    data["received_date"] = m.group(1).strip() if m else ""
+    data["received_date"] = c.translate_date(m.group(1)) if m else ""
 
     m = re.search(r"Nama\s*:\s*(.+?)\n(?:Alamat|$)", text, re.DOTALL)
     data["name"] = m.group(1).strip() if m else ""
@@ -34,7 +34,7 @@ def parse(text: str) -> dict:
     data["assignment_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"\bTarikh\s*:\s*([\d]{1,2}\s+\w+\s+\d{4})", text)
-    data["letter_date"] = m.group(1).strip() if m else ""
+    data["letter_date"] = c.translate_date(m.group(1)) if m else ""
 
     m = re.search(r"Rujukan Kami\s*:\s*(.+)", text)
     data["our_ref"] = m.group(1).strip() if m else ""
