@@ -1,21 +1,17 @@
 """
 Shared helpers used by all three MyIPO PDF -> English Word translator apps.
 
-Keeps PDF extraction, Malay->English translation, and the DOCX styling
-(matching the house style used in the existing sample translations:
-Times New Roman, [English translation] header, two-column "Label : Value"
-fields separated by tabs, and the standard disclaimer footer) in one place
-so the three Streamlit tools stay visually and behaviourally consistent.
+Keeps PDF extraction and the DOCX styling (matching the house style used in
+the existing sample translations: Times New Roman, [English translation]
+header, two-column "Label : Value" fields separated by tabs, and the standard
+disclaimer footer) in one place so the three Streamlit tools stay visually
+and behaviourally consistent.
 """
 import io
 import os
-import re
-import json
 import platform
 import subprocess
 import tempfile
-import urllib.request
-import urllib.parse
 
 from docx import Document
 from docx.shared import Pt, Cm, Twips
@@ -51,92 +47,6 @@ def extract_pdf_tables(file_bytes: bytes):
             for table in page.extract_tables():
                 rows.extend(table)
     return rows
-
-
-# ---------------------------------------------------------------------------
-# Translation
-# ---------------------------------------------------------------------------
-
-MONTHS_MS_TO_EN = {
-    "januari": "January", "februari": "February", "mac": "March",
-    "april": "April", "mei": "May", "jun": "June", "julai": "July",
-    "ogos": "August", "september": "September", "oktober": "October",
-    "november": "November", "disember": "December",
-}
-
-_DATE_RE = re.compile(r"\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b")
-
-
-def translate_date(date_str: str) -> str:
-    """'06 Oktober 2026' -> '6 October 2026' (strips leading zero, maps month)."""
-    if not date_str:
-        return date_str
-
-    def repl(m):
-        day, month, year = m.groups()
-        month_en = MONTHS_MS_TO_EN.get(month.lower(), month)
-        return f"{int(day)} {month_en} {year}"
-
-    return _DATE_RE.sub(repl, date_str.strip())
-
-
-_translation_cache = {}
-
-
-def gt_translate(text: str, source: str = "ms", target: str = "en") -> str:
-    """
-    Translate text via the public (unofficial) Google Translate endpoint.
-    Chunks long text to stay under the GET query-length limit, caches results
-    for the lifetime of the process, and degrades gracefully (returns the
-    original text prefixed with a warning marker) if the network call fails
-    -- the Streamlit UI lets the user fix the field by hand in that case.
-    """
-    text = text.strip()
-    if not text:
-        return ""
-
-    key = (source, target, text)
-    if key in _translation_cache:
-        return _translation_cache[key]
-
-    chunks = _split_for_translation(text)
-    translated_chunks = []
-    for chunk in chunks:
-        try:
-            translated_chunks.append(_gt_translate_chunk(chunk, source, target))
-        except Exception:
-            translated_chunks.append(f"[TRANSLATION FAILED - please translate manually]\n{chunk}")
-
-    result = " ".join(translated_chunks)
-    _translation_cache[key] = result
-    return result
-
-
-def _split_for_translation(text: str, limit: int = 1500):
-    """Split on sentence boundaries, keeping chunks under `limit` chars."""
-    if len(text) <= limit:
-        return [text]
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    chunks, current = [], ""
-    for sentence in sentences:
-        if len(current) + len(sentence) + 1 > limit and current:
-            chunks.append(current.strip())
-            current = sentence
-        else:
-            current = f"{current} {sentence}".strip()
-    if current:
-        chunks.append(current.strip())
-    return chunks or [text[:limit]]
-
-
-def _gt_translate_chunk(text: str, source: str, target: str) -> str:
-    params = urllib.parse.urlencode({
-        "client": "gtx", "sl": source, "tl": target, "dt": "t", "q": text,
-    })
-    url = "https://translate.googleapis.com/translate_a/single?" + params
-    with urllib.request.urlopen(url, timeout=15) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return "".join(seg[0] for seg in data[0] if seg[0])
 
 
 # ---------------------------------------------------------------------------
@@ -356,12 +266,6 @@ def add_table(doc: Document, headers, rows):
     return table
 
 
-def doc_to_bytes(doc: Document) -> bytes:
-    buf = io.BytesIO()
-    doc.save(buf)
-    return buf.getvalue()
-
-
 def doc_to_pdf_bytes(doc: Document) -> bytes:
     """
     Convert the generated Word document to PDF.
@@ -411,33 +315,15 @@ def doc_to_pdf_bytes(doc: Document) -> bytes:
 
 
 def render_download_buttons(st, doc: Document, base_name: str):
-    """
-    Shared UI: a Word download button plus a PDF download button (converted
-    via Microsoft Word on the machine running the app). If PDF conversion
-    fails -- e.g. the app is running on a machine without Word installed --
-    the Word download still works and a clear error is shown instead of the
-    PDF button.
-    """
-    col1, col2 = st.columns(2)
-    with col1:
+    """Shared UI: a single PDF download button for the generated document."""
+    try:
+        with st.spinner("Generating PDF..."):
+            pdf_bytes = doc_to_pdf_bytes(doc)
         st.download_button(
-            "⬇️ Download Word (.docx)",
-            data=doc_to_bytes(doc),
-            file_name=f"{base_name}.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "⬇️ Download PDF",
+            data=pdf_bytes,
+            file_name=f"{base_name}.pdf",
+            mime="application/pdf",
         )
-    with col2:
-        try:
-            with st.spinner("Converting to PDF via Microsoft Word..."):
-                pdf_bytes = doc_to_pdf_bytes(doc)
-            st.download_button(
-                "⬇️ Download PDF",
-                data=pdf_bytes,
-                file_name=f"{base_name}.pdf",
-                mime="application/pdf",
-            )
-        except Exception as e:
-            st.error(
-                "PDF export failed (requires Microsoft Word installed on this "
-                f"machine): {e}"
-            )
+    except Exception as e:
+        st.error(f"PDF generation failed: {e}")

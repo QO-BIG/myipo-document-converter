@@ -19,7 +19,7 @@ def parse(text: str) -> dict:
     data["app_no"] = m.group(1).strip() if m else ""
 
     m = re.search(r"diterima pada\s+([\d]{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
-    data["received_date"] = c.translate_date(m.group(1)) if m else ""
+    data["received_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"NAMA\s*:\s*(.+?)\n(?:ALAMAT|$)", text, re.DOTALL)
     data["name"] = m.group(1).strip() if m else ""
@@ -28,7 +28,7 @@ def parse(text: str) -> dict:
     data["address"] = m.group(1).strip() if m else ""
 
     m = re.search(r"\bTarikh\s*:\s*([\d]{1,2}\s+\w+\s+\d{4})", text)
-    data["letter_date"] = c.translate_date(m.group(1)) if m else ""
+    data["letter_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"Rujukan Kami\s*:\s*(.+)", text)
     data["our_ref"] = m.group(1).strip() if m else ""
@@ -59,28 +59,18 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review / edit the translated fields before generating the Word file")
+    st.subheader("Review the extracted details below")
 
-    app_no = st.text_input("Application / Registration No.", parsed["app_no"], key="cop_app_no")
-    received_date = st.text_input("Date application was received", parsed["received_date"], key="cop_received_date")
-    name = st.text_input("Name of applicant / proprietor", parsed["name"], key="cop_name")
-    address = st.text_area(
-        "Address",
-        c.gt_translate(parsed["address"]) if parsed["address"] else "",
-        height=100,
-        key="cop_address",
-    )
-    letter_date = st.text_input("Letter date", parsed["letter_date"], key="cop_letter_date")
-    our_ref = st.text_input("Our Ref", parsed["our_ref"], key="cop_our_ref")
-    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", key="cop_your_ref")
-    to = st.text_area("Addressed To", parsed["to"], height=100, key="cop_to")
+    app_no = st.text_input("Application / Registration No.", parsed["app_no"], disabled=True, key="cop_app_no")
+    received_date = st.text_input("Date application was received", parsed["received_date"], disabled=True, key="cop_received_date")
+    name = st.text_input("Name of applicant / proprietor", parsed["name"], disabled=True, key="cop_name")
+    address = st.text_area("Address", parsed["address"], height=100, disabled=True, key="cop_address")
+    letter_date = st.text_input("Letter date", parsed["letter_date"], disabled=True, key="cop_letter_date")
+    our_ref = st.text_input("Our Ref", parsed["our_ref"], disabled=True, key="cop_our_ref")
+    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", disabled=True, key="cop_your_ref")
+    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="cop_to")
 
-    st.caption(
-        "Name and address fields are proper nouns and are left as extracted; "
-        "edit any line above directly if the auto-translation needs correction."
-    )
-
-    if st.button("Generate English Word translation", type="primary", key="cop_generate"):
+    if st.button("Generate PDF", type="primary", key="cop_generate"):
         doc = c.new_document()
         c.add_translation_tag(doc)
         c.add_header_block(doc)

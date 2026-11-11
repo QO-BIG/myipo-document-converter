@@ -22,7 +22,7 @@ def parse(text: str) -> dict:
     data["class_"] = m.group(1).strip() if m else ""
 
     m = re.search(r"diterima pada\s+([\d]{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
-    data["received_date"] = c.translate_date(m.group(1)) if m else ""
+    data["received_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"Nama\s*:\s*(.+?)\n(?:Alamat|$)", text, re.DOTALL)
     data["name"] = m.group(1).strip() if m else ""
@@ -34,7 +34,7 @@ def parse(text: str) -> dict:
     data["assignment_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"\bTarikh\s*:\s*([\d]{1,2}\s+\w+\s+\d{4})", text)
-    data["letter_date"] = c.translate_date(m.group(1)) if m else ""
+    data["letter_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"Rujukan Kami\s*:\s*(.+)", text)
     data["our_ref"] = m.group(1).strip() if m else ""
@@ -65,30 +65,20 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review / edit the translated fields before generating the Word file")
+    st.subheader("Review the extracted details below")
 
-    reg_no = st.text_input("Registration No.", parsed["reg_no"], key="asn_reg_no")
-    class_ = st.text_input("Class", parsed["class_"], key="asn_class")
-    received_date = st.text_input("Date application was received", parsed["received_date"], key="asn_received_date")
-    name = st.text_input("Name of new proprietor", parsed["name"], key="asn_name")
-    address = st.text_area(
-        "Address",
-        c.gt_translate(parsed["address"]) if parsed["address"] else "",
-        height=100,
-        key="asn_address",
-    )
-    assignment_date = st.text_input("Date of Assignment (dd/mm/yyyy)", parsed["assignment_date"], key="asn_assignment_date")
-    letter_date = st.text_input("Letter date", parsed["letter_date"], key="asn_letter_date")
-    our_ref = st.text_input("Our Ref", parsed["our_ref"], key="asn_our_ref")
-    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", key="asn_your_ref")
-    to = st.text_area("Addressed To", parsed["to"], height=100, key="asn_to")
+    reg_no = st.text_input("Registration No.", parsed["reg_no"], disabled=True, key="asn_reg_no")
+    class_ = st.text_input("Class", parsed["class_"], disabled=True, key="asn_class")
+    received_date = st.text_input("Date application was received", parsed["received_date"], disabled=True, key="asn_received_date")
+    name = st.text_input("Name of new proprietor", parsed["name"], disabled=True, key="asn_name")
+    address = st.text_area("Address", parsed["address"], height=100, disabled=True, key="asn_address")
+    assignment_date = st.text_input("Date of Assignment (dd/mm/yyyy)", parsed["assignment_date"], disabled=True, key="asn_assignment_date")
+    letter_date = st.text_input("Letter date", parsed["letter_date"], disabled=True, key="asn_letter_date")
+    our_ref = st.text_input("Our Ref", parsed["our_ref"], disabled=True, key="asn_our_ref")
+    your_ref = st.text_input("Your Ref", parsed["your_ref"] or "-", disabled=True, key="asn_your_ref")
+    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="asn_to")
 
-    st.caption(
-        "Name and address fields are proper nouns and are left as extracted; "
-        "edit any line above directly if the auto-translation needs correction."
-    )
-
-    if st.button("Generate English Word translation", type="primary", key="asn_generate"):
+    if st.button("Generate PDF", type="primary", key="asn_generate"):
         doc = c.new_document()
         c.add_translation_tag(doc)
         c.add_header_block(doc)

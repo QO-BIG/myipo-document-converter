@@ -4,56 +4,13 @@ Streamlit tool #2: Notice of Provisional Refusal (NOTIS PENOLAKAN SEMENTARA)
 This notice has a fixed boilerplate shell (paragraphs 1, 3-6, the closing and
 signature block are identical on every MyIPO refusal letter) wrapped around a
 variable set of numbered grounds (2.1, 2.2, ...) and an optional table of
-conflicting trade marks. Known standard grounds are matched against a
-boilerplate dictionary so they come out in the exact official wording;
-anything that doesn't match is machine-translated and flagged for review.
+conflicting trade marks. The grounds are shown exactly as extracted from the
+PDF, in the original language.
 """
 import re
 import streamlit as st
 
 import common as c
-
-# --- Known standard grounds (Malay boilerplate -> official English wording) ---
-# Matched after collapsing whitespace, so line-wrap differences don't matter.
-GROUND_TEMPLATES = [
-    (
-        r"Cap Dagangan tidak mempunyai ciri-ciri distingtif\. Oleh itu, ia tidak menepati\s*"
-        r"Seksyen 23\(1\)\(b\) Akta Cap Dagangan 2019\.",
-        "Your trade mark does not have any distinctive character. Accordingly, it does not "
-        "satisfy Section 23(1)(b) of the Trademarks Act 2019.",
-    ),
-    (
-        r"Cap Dagangan terdiri daripada tanda atau petunjuk yang boleh digunakan dalam\s*"
-        r"perdagangan, untuk menunjukkan jenis, kualiti, kuantiti, kegunaan spesifik, nilai,\s*"
-        r"tempat asal geografi, ciri-ciri lain barang-barang/perkhidmatan atau masa\s*"
-        r"pengeluaran barang-barang atau penyampaian perkhidmatan\. Oleh itu, ia tidak\s*"
-        r"menepati Seksyen 23\(1\)\(c\) Akta Cap Dagangan 2019\.",
-        "Your trade mark consists of signs or indications that may be used in trade to "
-        "designate the kind, quality, quantity, intended purpose, value, geographical "
-        "origin, other characteristics of the goods/services, or the time of production of "
-        "the goods or rendering of the services. Accordingly, it does not satisfy "
-        "Section 23(1)(c) of the Trademarks Act 2019.",
-    ),
-    (
-        r"Cap Dagangan tuan hampir serupa dengan suatu cap dagangan terdahulu dan\s*"
-        r"hendak didaftarkan bagi barang-barang/perkhidmatan yang hampir serupa\s*"
-        r"dengan cap dagangan terdahulu itu\. Oleh itu, ia tidak menepati Seksyen 24\(2\)\(b\),\s*"
-        r"Akta Cap Dagangan 2019\. Cap Dagangan tersebut adalah seperti berikut\s*:?",
-        "Your trade mark is similar to an earlier trade mark and is to be registered for "
-        "goods/services that are similar to those of the earlier trade mark. Accordingly, "
-        "it does not satisfy Section 24(2)(b) of the Trademarks Act 2019. The trade marks "
-        "concerned are as follows:",
-    ),
-]
-
-# Deceptive/misleading ground has a case-specific quoted word; handled separately below.
-DECEPTIVE_RE = re.compile(
-    r"Penggunaan Cap Dagangan memperdayakan atau mengelirukan orang awam\s*"
-    r"tentang sifat, kualiti atau tempat asal geografi barang-barang atau perkhidmatan\.\s*"
-    r"Oleh itu, ia tidak menepati Seksyen 23\(5\)\(b\), Akta Cap Dagangan 2019\.\s*"
-    r"Penjelasan\s*:\s*(.+)",
-    re.DOTALL,
-)
 
 FIXED_INTRO = "I am directed to refer to your trade mark application dated {app_date}."
 FIXED_PARA2_LEAD = (
@@ -109,10 +66,10 @@ def parse(text: str) -> dict:
     data["your_ref"] = m.group(1).strip() if m else ""
 
     m = re.search(r"TARIKH\s*:\s*([\d]{1,2}\s+\w+\s+\d{4})", text)
-    data["date"] = c.translate_date(m.group(1)) if m else ""
+    data["date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"bertarikh\s+([\d]{1,2}\s+\w+\s+\d{4})\.", text)
-    data["app_date"] = c.translate_date(m.group(1)) if m else ""
+    data["app_date"] = m.group(1).strip() if m else ""
 
     m = re.search(r"dari aspek berikut\s*:\s*(.+?)(?:\n\s*3\.\s*Tuan boleh|No Permohonan Cap Dagangan Status)",
                    text, re.DOTALL)
@@ -134,25 +91,6 @@ def parse(text: str) -> dict:
     return data
 
 
-def translate_ground(ground_norm: str, index: int):
-    for pattern, english in GROUND_TEMPLATES:
-        if re.search(pattern, ground_norm):
-            return english
-    m = DECEPTIVE_RE.search(ground_norm)
-    if m:
-        explanation_ms = m.group(1).strip()
-        explanation_en = c.gt_translate(explanation_ms)
-        base = (
-            "The use of your trade mark is deceptive or likely to cause confusion to the "
-            "public as to the nature, quality or geographical origin of the goods or "
-            "services. Accordingly, it does not satisfy Section 23(5)(b) of the Trademarks "
-            "Act 2019."
-        )
-        return f"{base}\nExplanation: {explanation_en}"
-    # Unknown ground -> machine translate and flag for manual review
-    return c.gt_translate(ground_norm)
-
-
 def render():
     st.title("🚫 Provisional Refusal \u2192 English Word Translator")
     st.caption("NOTIS PENOLAKAN SEMENTARA")
@@ -171,25 +109,19 @@ def render():
     with st.expander("Show raw extracted PDF text (for troubleshooting)"):
         st.text(raw_text)
 
-    st.subheader("Review / edit the translated fields before generating the Word file")
+    st.subheader("Review the extracted details below")
 
-    app_no = st.text_input("Application No.", parsed["app_no"], key="pr_app_no")
-    class_ = st.text_input("Class", parsed["class_"], key="pr_class")
-    applicant = st.text_area(
-        "Applicant (name + address)",
-        c.gt_translate(parsed["applicant"]) if parsed["applicant"] else "",
-        height=100,
-        key="pr_applicant",
-    )
-    your_ref = st.text_input("Your Ref", parsed["your_ref"], key="pr_your_ref")
-    date = st.text_input("Letter date", parsed["date"], key="pr_date")
-    app_date = st.text_input("Trade mark application date", parsed["app_date"], key="pr_app_date")
+    app_no = st.text_input("Application No.", parsed["app_no"], disabled=True, key="pr_app_no")
+    class_ = st.text_input("Class", parsed["class_"], disabled=True, key="pr_class")
+    applicant = st.text_area("Applicant (name + address)", parsed["applicant"], height=100, disabled=True, key="pr_applicant")
+    your_ref = st.text_input("Your Ref", parsed["your_ref"], disabled=True, key="pr_your_ref")
+    date = st.text_input("Letter date", parsed["date"], disabled=True, key="pr_date")
+    app_date = st.text_input("Trade mark application date", parsed["app_date"], disabled=True, key="pr_app_date")
 
-    st.markdown("**Grounds for refusal** (auto-matched to standard wording where possible)")
+    st.markdown("**Grounds for refusal** (as extracted)")
     ground_edits = []
     for i, g in enumerate(parsed["grounds_raw"], start=1):
-        suggestion = translate_ground(g, i)
-        edited = st.text_area(f"Ground 2.{i}", suggestion, height=100, key=f"pr_ground_{i}")
+        edited = st.text_area(f"Ground 2.{i}", g, height=100, disabled=True, key=f"pr_ground_{i}")
         ground_edits.append(edited)
 
     st.markdown("**Conflicting / cited trade marks table** (leave blank rows if none)")
@@ -208,12 +140,13 @@ def render():
         "One row per line, format: Application No. | Status",
         "\n".join(f"{a} | {s}" for a, s in default_rows),
         height=100,
+        disabled=True,
         key="pr_table",
     )
 
-    to = st.text_area("Addressed To", parsed["to"], height=100, key="pr_to")
+    to = st.text_area("Addressed To", parsed["to"], height=100, disabled=True, key="pr_to")
 
-    if st.button("Generate English Word translation", type="primary", key="pr_generate"):
+    if st.button("Generate PDF", type="primary", key="pr_generate"):
         doc = c.new_document()
         c.add_translation_tag(doc)
         c.add_header_block(doc)
